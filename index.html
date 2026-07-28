@@ -443,7 +443,7 @@
 
     // Inicializar Firebase
     firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    const db = firebase.app().firestore("baseruleta");
 
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
