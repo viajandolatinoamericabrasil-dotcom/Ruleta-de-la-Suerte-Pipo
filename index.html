@@ -441,14 +441,21 @@
       measurementId: "G-2835JCYD0Q"
     };
 
-    // Inicializar Firebase
+    // Inicializar Firebase Estándar
     firebase.initializeApp(firebaseConfig);
-    const db = firebase.app().firestore("baseruleta");
+    const db = firebase.firestore();
 
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    let offers = [];
+    // Ofertas iniciales por defecto (solo si el servidor responde totalmente vacío)
+    let offers = [
+      { name: "360 Saldo Telf", cupos: 3 },
+      { name: "NADA :(", cupos: 9999 },
+      { name: "2 500 CUP", cupos: 2 },
+      { name: "NADA :(", cupos: 9999 },
+      { name: "USD 10 Cupón", cupos: 5 }
+    ];
     let usedPhones = [];
     let winnersHistory = [];
 
@@ -462,21 +469,10 @@
 
     // --- ESCUCHAR CAMBIOS EN TIEMPO REAL DESDE LA NUBE ---
     function listenToDatabase() {
-      // 1. Escuchar Ofertas
+      // 1. Escuchar Ofertas (SIN REINICIO FORZADO)
       db.collection("config").doc("offers").onSnapshot((doc) => {
         if (doc.exists && doc.data().list && doc.data().list.length > 0) {
           offers = doc.data().list;
-          updateAdminPanel();
-        } else if (offers.length === 0) {
-          // Si la base de datos está totalmente vacía por primera vez
-          offers = [
-            { name: "360 Saldo Telf", cupos: 3 },
-            { name: "NADA :(", cupos: 9999 },
-            { name: "2 500 CUP", cupos: 2 },
-            { name: "NADA :(", cupos: 9999 },
-            { name: "USD 10 Cupón", cupos: 5 }
-          ];
-          saveOffersToCloud();
           updateAdminPanel();
         }
       }, (error) => {
@@ -509,7 +505,9 @@
     }
 
     function saveOffersToCloud() {
-      db.collection("config").doc("offers").set({ list: offers });
+      db.collection("config").doc("offers").set({ list: offers })
+        .then(() => console.log("¡Ofertas guardadas con éxito en la nube!"))
+        .catch((err) => console.error("Error guardando ofertas:", err));
     }
 
     function saveWinnerToCloud(name, phone, prize) {
@@ -759,6 +757,9 @@
         });
         nameInput.value = "";
         cuposInput.value = "5";
+        
+        // Guardar y redibujar panel
+        updateAdminPanel();
         saveOffersToCloud();
       }
     }
@@ -769,6 +770,9 @@
         return;
       }
       offers.splice(index, 1);
+      
+      // Guardar y redibujar panel
+      updateAdminPanel();
       saveOffersToCloud();
     }
 
@@ -780,7 +784,8 @@
       }
     }
 
-    // Inicializar conexión con Firebase
+    // Dibujar inicialmente las ofertas y escuchar la nube
+    updateAdminPanel();
     listenToDatabase();
   </script>
 </body>
