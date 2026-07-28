@@ -429,7 +429,7 @@
 
   <script>
     // ==========================================
-    // CONFIGURACIÓN DE FIREBASE (INTEGRADA)
+    // CONFIGURACIÓN DE FIREBASE (CONEXIÓN A "baseruleta")
     // ==========================================
     const firebaseConfig = {
       apiKey: "AIzaSyCYIVQvdwtz6LYCdX_gqZXJE0OSi8RbiYw",
@@ -441,23 +441,34 @@
       measurementId: "G-2835JCYD0Q"
     };
 
-    // Inicializar Firebase Estándar
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    const app = firebase.initializeApp(firebaseConfig);
+    
+    // Apuntamos a la base "baseruleta" de la captura
+    let db;
+    try {
+      db = firebase.firestore(app, "baseruleta");
+    } catch (e) {
+      db = firebase.firestore();
+    }
 
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    // Ofertas iniciales por defecto (solo si el servidor responde totalmente vacío)
-    let offers = [
+    // Cargar ofertas desde localStorage o inicializar por defecto
+    const savedOffers = localStorage.getItem("ruleta_offers");
+    let offers = savedOffers ? JSON.parse(savedOffers) : [
       { name: "360 Saldo Telf", cupos: 3 },
       { name: "NADA :(", cupos: 9999 },
       { name: "2 500 CUP", cupos: 2 },
       { name: "NADA :(", cupos: 9999 },
       { name: "USD 10 Cupón", cupos: 5 }
     ];
-    let usedPhones = [];
-    let winnersHistory = [];
+
+    const savedPhones = localStorage.getItem("ruleta_phones");
+    let usedPhones = savedPhones ? JSON.parse(savedPhones) : [];
+    
+    const savedWinners = localStorage.getItem("ruleta_winners");
+    let winnersHistory = savedWinners ? JSON.parse(savedWinners) : [];
 
     const colors = ["#b22222", "#000000", "#b22222", "#000000", "#b22222", "#000000"];
     const textColors = ["#fff", "#d4af37", "#fff", "#d4af37", "#fff", "#d4af37"];
@@ -467,47 +478,15 @@
     let isSpinning = false;
     let currentAngle = 0;
 
-    // --- ESCUCHAR CAMBIOS EN TIEMPO REAL DESDE LA NUBE ---
-    function listenToDatabase() {
-      // 1. Escuchar Ofertas (SIN REINICIO FORZADO)
-      db.collection("config").doc("offers").onSnapshot((doc) => {
-        if (doc.exists && doc.data().list && doc.data().list.length > 0) {
-          offers = doc.data().list;
-          updateAdminPanel();
-        }
-      }, (error) => {
-        console.error("Error al escuchar ofertas de Firestore:", error);
-      });
-
-      // 2. Escuchar Ganadores
-      db.collection("config").doc("winners").onSnapshot((doc) => {
-        if (doc.exists && doc.data().list) {
-          winnersHistory = doc.data().list;
-        } else {
-          winnersHistory = [];
-        }
-        renderCredits();
-        updateSocialText();
-      }, (error) => {
-        console.error("Error al escuchar ganadores de Firestore:", error);
-      });
-
-      // 3. Escuchar Teléfonos Usados
-      db.collection("config").doc("usedPhones").onSnapshot((doc) => {
-        if (doc.exists && doc.data().list) {
-          usedPhones = doc.data().list;
-        } else {
-          usedPhones = [];
-        }
-      }, (error) => {
-        console.error("Error al escuchar teléfonos de Firestore:", error);
-      });
-    }
-
+    // --- GUARDADO HÍBRIDO (LOCAL + NUBE) ---
     function saveOffersToCloud() {
-      db.collection("config").doc("offers").set({ list: offers })
-        .then(() => console.log("¡Ofertas guardadas con éxito en la nube!"))
-        .catch((err) => console.error("Error guardando ofertas:", err));
+      // 1. Guarda al instante en el navegador
+      localStorage.setItem("ruleta_offers", JSON.stringify(offers));
+      
+      // 2. Intenta respaldar en Firestore
+      if (db) {
+        db.collection("config").doc("offers").set({ list: offers }).catch(() => {});
+      }
     }
 
     function saveWinnerToCloud(name, phone, prize) {
@@ -522,12 +501,48 @@
       };
       
       winnersHistory.unshift(record);
-      db.collection("config").doc("winners").set({ list: winnersHistory });
+      localStorage.setItem("ruleta_winners", JSON.stringify(winnersHistory));
+
+      if (db) {
+        db.collection("config").doc("winners").set({ list: winnersHistory }).catch(() => {});
+      }
     }
 
     function saveUsedPhoneToCloud(phone) {
       usedPhones.push(phone);
-      db.collection("config").doc("usedPhones").set({ list: usedPhones });
+      localStorage.setItem("ruleta_phones", JSON.stringify(usedPhones));
+
+      if (db) {
+        db.collection("config").doc("usedPhones").set({ list: usedPhones }).catch(() => {});
+      }
+    }
+
+    function listenToDatabase() {
+      if (!db) return;
+
+      db.collection("config").doc("offers").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list && doc.data().list.length > 0) {
+          offers = doc.data().list;
+          localStorage.setItem("ruleta_offers", JSON.stringify(offers));
+          updateAdminPanel();
+        }
+      }, () => {});
+
+      db.collection("config").doc("winners").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          winnersHistory = doc.data().list;
+          localStorage.setItem("ruleta_winners", JSON.stringify(winnersHistory));
+          renderCredits();
+          updateSocialText();
+        }
+      }, () => {});
+
+      db.collection("config").doc("usedPhones").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          usedPhones = doc.data().list;
+          localStorage.setItem("ruleta_phones", JSON.stringify(usedPhones));
+        }
+      }, () => {});
     }
 
     function renderCredits() {
@@ -758,7 +773,6 @@
         nameInput.value = "";
         cuposInput.value = "5";
         
-        // Guardar y redibujar panel
         updateAdminPanel();
         saveOffersToCloud();
       }
@@ -771,7 +785,6 @@
       }
       offers.splice(index, 1);
       
-      // Guardar y redibujar panel
       updateAdminPanel();
       saveOffersToCloud();
     }
@@ -779,13 +792,16 @@
     function resetUsedPhones() {
       if (confirm("¿Seguro que deseas limpiar la lista de WhatsApps que ya jugaron?")) {
         usedPhones = [];
-        db.collection("config").doc("usedPhones").set({ list: [] });
-        alert("Lista de teléfonos limpiada en la nube.");
+        localStorage.setItem("ruleta_phones", JSON.stringify([]));
+        if (db) db.collection("config").doc("usedPhones").set({ list: [] });
+        alert("Lista de teléfonos limpiada.");
       }
     }
 
-    // Dibujar inicialmente las ofertas y escuchar la nube
+    // Inicializar interfaz
     updateAdminPanel();
+    renderCredits();
+    updateSocialText();
     listenToDatabase();
   </script>
 </body>
