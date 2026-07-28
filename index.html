@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ruleta de la Suerte - Viajando Latinoamérica</title>
   
+  <!-- SDKs de Firebase Firestore -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; }
 
@@ -424,11 +428,31 @@
   </div>
 
   <script>
+    // Configuración Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyCYIVQvdwtz6LYCdX_gqZXJE0OSi8RbiYw",
+      authDomain: "ruleta-viajan-lat.firebaseapp.com",
+      projectId: "ruleta-viajan-lat",
+      storageBucket: "ruleta-viajan-lat.firebasestorage.app",
+      messagingSenderId: "1057891382288",
+      appId: "1:1057891382288:web:3c2be406a8fbc1bd950695",
+      measurementId: "G-2835JCYD0Q"
+    };
+
+    // Inicialización segura apuntando a la base "baseruleta"
+    const app = firebase.initializeApp(firebaseConfig);
+    let db;
+    try {
+      db = firebase.firestore(app, "baseruleta");
+    } catch (e) {
+      db = firebase.firestore();
+    }
+
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    // CARGAR OFERTAS DESDE MEMORIA LOCAL (IMPOSIBLE DE BORRAR AL RECARGAR)
-    const storedOffers = localStorage.getItem("ruleta_offers_v2");
+    // Cargar ofertas locales de respaldo
+    const storedOffers = localStorage.getItem("ruleta_offers_v3");
     let offers = storedOffers ? JSON.parse(storedOffers) : [
       { name: "360 Saldo Telf", cupos: 3 },
       { name: "NADA :(", cupos: 9999 },
@@ -437,10 +461,10 @@
       { name: "USD 10 Cupón", cupos: 5 }
     ];
 
-    const storedPhones = localStorage.getItem("ruleta_phones_v2");
+    const storedPhones = localStorage.getItem("ruleta_phones_v3");
     let usedPhones = storedPhones ? JSON.parse(storedPhones) : [];
     
-    const storedWinners = localStorage.getItem("ruleta_winners_v2");
+    const storedWinners = localStorage.getItem("ruleta_winners_v3");
     let winnersHistory = storedWinners ? JSON.parse(storedWinners) : [];
 
     const colors = ["#b22222", "#000000", "#b22222", "#000000", "#b22222", "#000000"];
@@ -451,11 +475,44 @@
     let isSpinning = false;
     let currentAngle = 0;
 
-    function saveOffersLocally() {
-      localStorage.setItem("ruleta_offers_v2", JSON.stringify(offers));
+    // Escuchar cambios globales en tiempo real desde Firestore
+    function listenToDatabase() {
+      if (!db) return;
+
+      db.collection("config").doc("offers").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list && doc.data().list.length > 0) {
+          offers = doc.data().list;
+          localStorage.setItem("ruleta_offers_v3", JSON.stringify(offers));
+          updateAdminPanel();
+        }
+      }, (err) => console.log("Error consultando ofertas en nube:", err));
+
+      db.collection("config").doc("winners").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          winnersHistory = doc.data().list;
+          localStorage.setItem("ruleta_winners_v3", JSON.stringify(winnersHistory));
+          renderCredits();
+          updateSocialText();
+        }
+      }, (err) => console.log("Error consultando ganadores:", err));
+
+      db.collection("config").doc("usedPhones").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          usedPhones = doc.data().list;
+          localStorage.setItem("ruleta_phones_v3", JSON.stringify(usedPhones));
+        }
+      }, (err) => console.log("Error consultando teléfonos:", err));
     }
 
-    function saveWinnerLocally(name, phone, prize) {
+    function saveOffersToCloud() {
+      localStorage.setItem("ruleta_offers_v3", JSON.stringify(offers));
+      if (db) {
+        db.collection("config").doc("offers").set({ list: offers })
+          .catch((err) => console.error("Error guardando ofertas en la nube:", err));
+      }
+    }
+
+    function saveWinnerToCloud(name, phone, prize) {
       const parts = name.split(" ");
       const anonymousName = parts[0] + (parts[1] ? " " + parts[1][0] + "." : "");
       
@@ -467,14 +524,21 @@
       };
       
       winnersHistory.unshift(record);
-      localStorage.setItem("ruleta_winners_v2", JSON.stringify(winnersHistory));
+      localStorage.setItem("ruleta_winners_v3", JSON.stringify(winnersHistory));
       renderCredits();
       updateSocialText();
+
+      if (db) {
+        db.collection("config").doc("winners").set({ list: winnersHistory }).catch(() => {});
+      }
     }
 
-    function saveUsedPhoneLocally(phone) {
+    function saveUsedPhoneToCloud(phone) {
       usedPhones.push(phone);
-      localStorage.setItem("ruleta_phones_v2", JSON.stringify(usedPhones));
+      localStorage.setItem("ruleta_phones_v3", JSON.stringify(usedPhones));
+      if (db) {
+        db.collection("config").doc("usedPhones").set({ list: usedPhones }).catch(() => {});
+      }
     }
 
     function renderCredits() {
@@ -597,7 +661,7 @@
           requestAnimationFrame(animate);
         } else {
           isSpinning = false;
-          saveUsedPhoneLocally(phone);
+          saveUsedPhoneToCloud(phone);
           calculatePrize(name, phone);
         }
       }
@@ -637,8 +701,8 @@
       } 
       else {
         wonOffer.cupos--;
-        saveOffersLocally();
-        saveWinnerLocally(name, phone, wonOffer.name);
+        saveOffersToCloud();
+        saveWinnerToCloud(name, phone, wonOffer.name);
 
         modalTitle.innerText = "¡FELICIDADES! 🎉";
         modalTitle.style.color = "#d9381e";
@@ -705,8 +769,8 @@
         nameInput.value = "";
         cuposInput.value = "5";
         
-        saveOffersLocally();
         updateAdminPanel();
+        saveOffersToCloud();
       }
     }
 
@@ -717,22 +781,24 @@
       }
       offers.splice(index, 1);
       
-      saveOffersLocally();
       updateAdminPanel();
+      saveOffersToCloud();
     }
 
     function resetUsedPhones() {
       if (confirm("¿Seguro que deseas limpiar la lista de WhatsApps que ya jugaron?")) {
         usedPhones = [];
-        localStorage.setItem("ruleta_phones_v2", JSON.stringify([]));
+        localStorage.setItem("ruleta_phones_v3", JSON.stringify([]));
+        if (db) db.collection("config").doc("usedPhones").set({ list: [] });
         alert("Lista de teléfonos limpiada.");
       }
     }
 
-    // Inicialización inmediata
+    // Inicializar la interfaz y escuchar la nube
     updateAdminPanel();
     renderCredits();
     updateSocialText();
+    listenToDatabase();
   </script>
 </body>
 </html>
