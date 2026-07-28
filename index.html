@@ -464,9 +464,11 @@
     function listenToDatabase() {
       // 1. Escuchar Ofertas
       db.collection("config").doc("offers").onSnapshot((doc) => {
-        if (doc.exists && doc.data().list) {
+        if (doc.exists && doc.data().list && doc.data().list.length > 0) {
           offers = doc.data().list;
-        } else {
+          updateAdminPanel();
+        } else if (offers.length === 0) {
+          // Si la base de datos está totalmente vacía por primera vez
           offers = [
             { name: "360 Saldo Telf", cupos: 3 },
             { name: "NADA :(", cupos: 9999 },
@@ -475,8 +477,10 @@
             { name: "USD 10 Cupón", cupos: 5 }
           ];
           saveOffersToCloud();
+          updateAdminPanel();
         }
-        updateAdminPanel();
+      }, (error) => {
+        console.error("Error al escuchar ofertas de Firestore:", error);
       });
 
       // 2. Escuchar Ganadores
@@ -488,6 +492,8 @@
         }
         renderCredits();
         updateSocialText();
+      }, (error) => {
+        console.error("Error al escuchar ganadores de Firestore:", error);
       });
 
       // 3. Escuchar Teléfonos Usados
@@ -497,6 +503,8 @@
         } else {
           usedPhones = [];
         }
+      }, (error) => {
+        console.error("Error al escuchar teléfonos de Firestore:", error);
       });
     }
 
