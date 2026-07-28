@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ruleta de la Suerte - Viajando Latinoamérica</title>
+  
+  <!-- SDKs de Firebase Firestore -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; }
 
@@ -153,9 +158,6 @@
 
     .btn-spin:disabled { background: #555; border-color: #888; box-shadow: none; text-shadow: none; cursor: not-allowed; }
 
-    /* ==========================================
-       TARJETA DE CRÉDITOS DE GANADORES (NUEVO)
-       ========================================== */
     .credits-frame {
       background: #d4af37;
       padding: 6px;
@@ -197,10 +199,6 @@
       animation: movieCredits 12s linear infinite;
     }
 
-    .credits-scroll:hover {
-      animation-play-state: paused; /* Pausa al pasar el ratón */
-    }
-
     .credit-item {
       font-family: sans-serif;
       font-size: 0.95rem;
@@ -208,17 +206,13 @@
       padding: 4px 0;
     }
 
-    .credit-item span {
-      color: #2a9d8f;
-      font-weight: bold;
-    }
+    .credit-item span { color: #2a9d8f; font-weight: bold; }
 
     @keyframes movieCredits {
       0% { top: 100%; }
       100% { top: -200%; }
     }
 
-    /* PANEL ADMIN FLOTANTE */
     .admin-wrapper { position: fixed; bottom: 15px; right: 15px; z-index: 20; }
 
     #showAdminBtn {
@@ -274,7 +268,6 @@
     .btn-danger { background: #e63946; color: white; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: sans-serif; font-size: 0.8rem; }
     .btn-info { background: #2a9d8f; color: white; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: sans-serif; font-size: 0.8rem; }
 
-    /* TARJETA COPIAR GANADORES ADMIN */
     .copy-card {
       background: #111;
       border: 1px solid #d4af37;
@@ -296,7 +289,6 @@
       resize: none;
     }
 
-    /* MODAL RESPONSIVO */
     .modal {
       display: none;
       position: fixed;
@@ -361,7 +353,6 @@
 
   <div class="container">
     <div class="game-section">
-      <!-- FORMULARIO CLIENTE -->
       <div class="form-frame">
         <div class="game-box">
           <div class="form-group">
@@ -376,26 +367,21 @@
         </div>
       </div>
 
-      <!-- LA RULETA -->
       <div class="wheel-container">
         <div class="marker"></div>
         <canvas id="wheel" width="500" height="500"></canvas>
       </div>
     </div>
 
-    <!-- TARJETA CRÉDITOS DE GANADORES (PÚBLICA) -->
     <div class="credits-frame">
       <div class="credits-box">
         <h3>🏆 ÚLTIMOS GANADORES DE LA PROMOCIÓN 🏆</h3>
         <div class="credits-viewport">
-          <div class="credits-scroll" id="publicCreditsList">
-            <!-- Los ganadores se generan dinámicamente aquí -->
-          </div>
+          <div class="credits-scroll" id="publicCreditsList"></div>
         </div>
       </div>
     </div>
 
-    <!-- PANEL ADMIN FLOTANTE -->
     <div class="admin-wrapper">
       <button id="showAdminBtn" onclick="promptPassword()">⚙️</button>
 
@@ -412,7 +398,6 @@
             </div>
           </div>
 
-          <!-- TARJETA COPIAR PUBLICACIÓN SOCIAL -->
           <div class="copy-card">
             <p style="font-size: 0.75rem; color: #d4af37; font-family: sans-serif; margin-bottom: 5px;"><strong>📢 Tarjeta para Redes Sociales:</strong></p>
             <textarea id="socialText" readonly></textarea>
@@ -426,7 +411,6 @@
     </div>
   </div>
 
-  <!-- MODAL DE PREMIO -->
   <div class="modal" id="prizeModal">
     <div class="modal-frame">
       <div class="modal-content">
@@ -444,26 +428,29 @@
   </div>
 
   <script>
+    // ==========================================
+    // CONFIGURACIÓN DE FIREBASE (INTEGRADA)
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyCYIVQvdwtz6LYCdX_gqZXJE0OSi8RbiYw",
+      authDomain: "ruleta-viajan-lat.firebaseapp.com",
+      projectId: "ruleta-viajan-lat",
+      storageBucket: "ruleta-viajan-lat.firebasestorage.app",
+      messagingSenderId: "1057891382288",
+      appId: "1:1057891382288:web:3c2be406a8fbc1bd950695",
+      measurementId: "G-2835JCYD0Q"
+    };
+
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    let defaultOffers = [
-      { name: "360 Saldo Telf", cupos: 3 },
-      { name: "NADA :(", cupos: 9999 },
-      { name: "2 500 CUP", cupos: 2 },
-      { name: "NADA :(", cupos: 9999 },
-      { name: "USD 10 Cupón", cupos: 5 }
-    ];
-
-    let defaultWinners = [
-      { name: "Carlos M.", prize: "360 Saldo Telf", phone: "XXXX" },
-      { name: "Elena R.", prize: "USD 10 Cupón", phone: "XXXX" },
-      { name: "Marcos P.", prize: "2 500 CUP", phone: "XXXX" }
-    ];
-
-    let offers = JSON.parse(localStorage.getItem("ruleta_offers")) || defaultOffers;
-    let usedPhones = JSON.parse(localStorage.getItem("ruleta_used_phones")) || [];
-    let winnersHistory = JSON.parse(localStorage.getItem("ruleta_winners_history")) || defaultWinners;
+    let offers = [];
+    let usedPhones = [];
+    let winnersHistory = [];
 
     const colors = ["#b22222", "#000000", "#b22222", "#000000", "#b22222", "#000000"];
     const textColors = ["#fff", "#d4af37", "#fff", "#d4af37", "#fff", "#d4af37"];
@@ -473,17 +460,51 @@
     let isSpinning = false;
     let currentAngle = 0;
 
-    function saveOffers() {
-      localStorage.setItem("ruleta_offers", JSON.stringify(offers));
+    // --- ESCUCHAR CAMBIOS EN TIEMPO REAL DESDE LA NUBE ---
+    function listenToDatabase() {
+      // 1. Escuchar Ofertas
+      db.collection("config").doc("offers").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          offers = doc.data().list;
+        } else {
+          offers = [
+            { name: "360 Saldo Telf", cupos: 3 },
+            { name: "NADA :(", cupos: 9999 },
+            { name: "2 500 CUP", cupos: 2 },
+            { name: "NADA :(", cupos: 9999 },
+            { name: "USD 10 Cupón", cupos: 5 }
+          ];
+          saveOffersToCloud();
+        }
+        updateAdminPanel();
+      });
+
+      // 2. Escuchar Ganadores
+      db.collection("config").doc("winners").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          winnersHistory = doc.data().list;
+        } else {
+          winnersHistory = [];
+        }
+        renderCredits();
+        updateSocialText();
+      });
+
+      // 3. Escuchar Teléfonos Usados
+      db.collection("config").doc("usedPhones").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          usedPhones = doc.data().list;
+        } else {
+          usedPhones = [];
+        }
+      });
     }
 
-    function saveUsedPhone(phone) {
-      usedPhones.push(phone);
-      localStorage.setItem("ruleta_used_phones", JSON.stringify(usedPhones));
+    function saveOffersToCloud() {
+      db.collection("config").doc("offers").set({ list: offers });
     }
 
-    function logWinner(name, phone, prize) {
-      // Ocultar parcialmente el nombre para privacidad
+    function saveWinnerToCloud(name, phone, prize) {
       const parts = name.split(" ");
       const anonymousName = parts[0] + (parts[1] ? " " + parts[1][0] + "." : "");
       
@@ -494,10 +515,13 @@
         date: new Date().toLocaleString("es-ES")
       };
       
-      winnersHistory.unshift(record); // Agregar al inicio
-      localStorage.setItem("ruleta_winners_history", JSON.stringify(winnersHistory));
-      renderCredits();
-      updateSocialText();
+      winnersHistory.unshift(record);
+      db.collection("config").doc("winners").set({ list: winnersHistory });
+    }
+
+    function saveUsedPhoneToCloud(phone) {
+      usedPhones.push(phone);
+      db.collection("config").doc("usedPhones").set({ list: usedPhones });
     }
 
     function renderCredits() {
@@ -522,7 +546,7 @@
       const textarea = document.getElementById("socialText");
       let text = "✈️ ¡RESULTADOS OFICIALES DE LA RULETA! ✈️\n\n🎉 Felicidades a nuestros ganadores de Viajando Latinoamérica:\n\n";
       
-      winnersHistory.forEach((w, idx) => {
+      winnersHistory.forEach((w) => {
         text += `🥇 ${w.name} - Ganó: ${w.prize}\n`;
       });
       
@@ -534,11 +558,13 @@
       const textarea = document.getElementById("socialText");
       textarea.select();
       document.execCommand("copy");
-      alert("📋 ¡Lista de ganadores copiada al portapapeles! Ya puedes pegarla en tu Facebook, Instagram o Estados de WhatsApp.");
+      alert("📋 ¡Lista de ganadores copiada al portapapeles!");
     }
 
     function drawWheel() {
       const numSegments = offers.length;
+      if (numSegments === 0) return;
+      
       const arcSize = (2 * Math.PI) / numSegments;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -618,7 +644,7 @@
           requestAnimationFrame(animate);
         } else {
           isSpinning = false;
-          saveUsedPhone(phone);
+          saveUsedPhoneToCloud(phone);
           calculatePrize(name, phone);
         }
       }
@@ -643,7 +669,7 @@
       if (wonOffer.name.toUpperCase().includes("NADA")) {
         modalTitle.innerText = "¡LÁSTIMA! 😔";
         modalTitle.style.color = "#666";
-        modalSubtext.innerText = "No has ganado ningún premio esta vez. Tu única oportunidad de la promoción ha sido utilizada.";
+        modalSubtext.innerText = "No has ganado ningún premio esta vez.";
         prizeText.innerText = "Sin Premio";
         wsLink.style.display = "none";
         closeModalBtn.style.display = "inline-block";
@@ -651,17 +677,15 @@
       else if (wonOffer.cupos <= 0) {
         modalTitle.innerText = "PREMIO AGOTADO 🚫";
         modalTitle.style.color = "#e63946";
-        modalSubtext.innerText = "Lo sentimos, los cupos para este premio se agotaron. Has consumido tu oportunidad hasta la próxima promoción.";
+        modalSubtext.innerText = "Lo sentimos, los cupos para este premio se agotaron.";
         prizeText.innerText = wonOffer.name;
         wsLink.style.display = "none";
         closeModalBtn.style.display = "inline-block";
       } 
       else {
         wonOffer.cupos--;
-        saveOffers();
-        updateAdminPanel();
-        
-        logWinner(name, phone, wonOffer.name);
+        saveOffersToCloud();
+        saveWinnerToCloud(name, phone, wonOffer.name);
 
         modalTitle.innerText = "¡FELICIDADES! 🎉";
         modalTitle.style.color = "#d9381e";
@@ -727,8 +751,7 @@
         });
         nameInput.value = "";
         cuposInput.value = "5";
-        saveOffers();
-        updateAdminPanel();
+        saveOffersToCloud();
       }
     }
 
@@ -738,22 +761,19 @@
         return;
       }
       offers.splice(index, 1);
-      saveOffers();
-      updateAdminPanel();
+      saveOffersToCloud();
     }
 
     function resetUsedPhones() {
-      if (confirm("¿Seguro que deseas limpiar la lista de WhatsApps que ya jugaron para permitirles intentar de nuevo?")) {
+      if (confirm("¿Seguro que deseas limpiar la lista de WhatsApps que ya jugaron?")) {
         usedPhones = [];
-        localStorage.removeItem("ruleta_used_phones");
-        alert("Lista de teléfonos limpiada correctamente.");
+        db.collection("config").doc("usedPhones").set({ list: [] });
+        alert("Lista de teléfonos limpiada en la nube.");
       }
     }
 
-    // Inicializar renderizado
-    renderCredits();
-    updateSocialText();
-    updateAdminPanel();
+    // Inicializar conexión con Firebase
+    listenToDatabase();
   </script>
 </body>
 </html>
