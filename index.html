@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ruleta de la Suerte - Viajando Latinoamérica</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; }
+
+    body {
+      background: #800000;
+      background-image: radial-gradient(#a52a2a 1px, transparent 1px), radial-gradient(#a52a2a 1px, transparent 1px);
+      background-size: 30px 30px;
+      background-position: 0 0, 15px 15px;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 15px 10px;
+      overflow-x: hidden;
+    }
+
+    header { text-align: center; margin-bottom: 20px; width: 100%; }
+
+    h1 {
+      font-size: clamp(2rem, 8vw, 4rem);
+      color: #fff;
+      text-transform: uppercase;
+      font-weight: bold;
+      text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000, 2px 2px 0 #d4af37, -2px -2px 0 #d4af37;
+      line-height: 1.1;
+    }
+
+    h2 {
+      font-size: clamp(1.1rem, 4vw, 1.8rem);
+      font-weight: normal;
+      color: #d4af37;
+      font-style: italic;
+      margin-top: 5px;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 25px;
+      width: 100%;
+      max-width: 1100px;
+    }
+
+    .game-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 25px;
+      width: 100%;
+    }
+
+    .form-frame {
+      background: #d4af37;
+      padding: 6px;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .game-box {
+      background: #2a2a2a;
+      padding: 20px 15px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+
+    .form-group { width: 100%; margin-bottom: 15px; }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.95rem;
+      color: #d4af37;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 5px;
+      border: 2px solid #d4af37;
+      background: #fff;
+      font-size: 1rem;
+      color: #333;
+      font-family: sans-serif;
+    }
+
+    .wheel-container {
+      position: relative;
+      padding: 10px;
+      background: #d4af37;
+      border-radius: 50%;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+      width: 100%;
+      max-width: 450px;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .marker {
+      position: absolute;
+      top: -15px;
+      left: 50%;
+      transform: translateX(-50%) rotate(180deg);
+      width: 0;
+      height: 0;
+      border-left: 15px solid transparent;
+      border-right: 15px solid transparent;
+      border-bottom: 30px solid #d4af37;
+      z-index: 10;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+      border-radius: 50%;
+      display: block;
+    }
+
+    .btn-spin {
+      background: #000;
+      color: #fff;
+      border: 3px solid #ff0000;
+      padding: 14px;
+      font-size: 1.4rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      border-radius: 50px;
+      cursor: pointer;
+      width: 100%;
+      letter-spacing: 1px;
+      text-shadow: 0 0 5px #ff0000;
+      box-shadow: 0 0 15px #ff0000, inset 0 0 10px #ff0000;
+      transition: 0.3s;
+    }
+
+    .btn-spin:disabled { background: #555; border-color: #888; box-shadow: none; text-shadow: none; cursor: not-allowed; }
+
+    /* ==========================================
+       TARJETA DE CRÉDITOS DE GANADORES (NUEVO)
+       ========================================== */
+    .credits-frame {
+      background: #d4af37;
+      padding: 6px;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+      width: 100%;
+      max-width: 850px;
+      margin-top: 10px;
+    }
+
+    .credits-box {
+      background: #111;
+      border-radius: 8px;
+      padding: 15px;
+      text-align: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .credits-box h3 {
+      color: #d4af37;
+      text-transform: uppercase;
+      font-size: 1.2rem;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+      border-bottom: 1px dashed #d4af37;
+      padding-bottom: 5px;
+    }
+
+    .credits-viewport {
+      height: 90px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .credits-scroll {
+      position: absolute;
+      width: 100%;
+      animation: movieCredits 12s linear infinite;
+    }
+
+    .credits-scroll:hover {
+      animation-play-state: paused; /* Pausa al pasar el ratón */
+    }
+
+    .credit-item {
+      font-family: sans-serif;
+      font-size: 0.95rem;
+      color: #fff;
+      padding: 4px 0;
+    }
+
+    .credit-item span {
+      color: #2a9d8f;
+      font-weight: bold;
+    }
+
+    @keyframes movieCredits {
+      0% { top: 100%; }
+      100% { top: -200%; }
+    }
+
+    /* PANEL ADMIN FLOTANTE */
+    .admin-wrapper { position: fixed; bottom: 15px; right: 15px; z-index: 20; }
+
+    #showAdminBtn {
+      background: #d4af37;
+      color: #2a2a2a;
+      border: 2px solid #fff;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .admin-frame {
+      background: #d4af37;
+      padding: 6px;
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+      display: none;
+      position: absolute;
+      bottom: 60px;
+      right: 0;
+      width: 320px;
+    }
+
+    .admin-panel { background: #2a2a2a; color: #fff; padding: 15px; border-radius: 6px; }
+    .admin-panel h3 { margin-bottom: 10px; color: #d4af37; text-transform: uppercase; font-size: 1.1rem; text-align: center; }
+
+    .admin-list { list-style: none; margin-bottom: 10px; max-height: 140px; overflow-y: auto; }
+    .admin-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #444;
+      font-family: sans-serif;
+      font-size: 0.85rem;
+    }
+
+    .cupo-badge {
+      background: #d4af37;
+      color: #000;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: bold;
+      font-size: 0.75rem;
+    }
+
+    .btn-danger { background: #e63946; color: white; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: sans-serif; font-size: 0.8rem; }
+    .btn-info { background: #2a9d8f; color: white; border: none; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; font-family: sans-serif; font-size: 0.8rem; }
+
+    /* TARJETA COPIAR GANADORES ADMIN */
+    .copy-card {
+      background: #111;
+      border: 1px solid #d4af37;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .copy-card textarea {
+      width: 100%;
+      height: 80px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 5px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      resize: none;
+    }
+
+    /* MODAL RESPONSIVO */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      padding: 15px;
+    }
+
+    .modal-frame { background: #d4af37; padding: 6px; border-radius: 12px; width: 100%; max-width: 450px; }
+    .modal-content { background: #fff; color: #333; padding: 25px 15px; border-radius: 8px; text-align: center; }
+
+    .modal-title { font-size: 1.8rem; color: #d9381e; text-transform: uppercase; }
+    #prizeText { font-size: 1.5rem; margin: 15px 0; font-weight: bold; color: #2a9d8f; text-transform: uppercase; }
+
+    .btn-whatsapp-claim {
+      background: #25d366;
+      color: white;
+      margin-top: 15px;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 50px;
+      font-weight: bold;
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      font-family: sans-serif;
+      box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4);
+    }
+
+    .btn-close-modal {
+      background: #666;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 20px;
+      margin-top: 15px;
+      cursor: pointer;
+      font-family: sans-serif;
+    }
+
+    @media (min-width: 768px) {
+      body { padding: 30px 20px; }
+      .game-section { flex-direction: row; justify-content: center; align-items: center; gap: 40px; }
+      .form-frame { width: 350px; }
+      .wheel-container { max-width: 450px; }
+      .btn-spin { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Ruleta de la Suerte</h1>
+    <h2>Viajando Latinoamérica</h2>
+  </header>
+
+  <div class="container">
+    <div class="game-section">
+      <!-- FORMULARIO CLIENTE -->
+      <div class="form-frame">
+        <div class="game-box">
+          <div class="form-group">
+            <label for="userName">Ingresa tu Nombre</label>
+            <input type="text" id="userName" placeholder="Ej: María López" required>
+          </div>
+          <div class="form-group">
+            <label for="userPhone">Tu WhatsApp</label>
+            <input type="tel" id="userPhone" placeholder="+55 41 99993-2957" required>
+          </div>
+          <button class="btn-spin" id="spinBtn" onclick="spinWheel()">¡Girar Ruleta!</button>
+        </div>
+      </div>
+
+      <!-- LA RULETA -->
+      <div class="wheel-container">
+        <div class="marker"></div>
+        <canvas id="wheel" width="500" height="500"></canvas>
+      </div>
+    </div>
+
+    <!-- TARJETA CRÉDITOS DE GANADORES (PÚBLICA) -->
+    <div class="credits-frame">
+      <div class="credits-box">
+        <h3>🏆 ÚLTIMOS GANADORES DE LA PROMOCIÓN 🏆</h3>
+        <div class="credits-viewport">
+          <div class="credits-scroll" id="publicCreditsList">
+            <!-- Los ganadores se generan dinámicamente aquí -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL ADMIN FLOTANTE -->
+    <div class="admin-wrapper">
+      <button id="showAdminBtn" onclick="promptPassword()">⚙️</button>
+
+      <div class="admin-frame" id="adminFrame">
+        <div class="admin-panel">
+          <h3>⚙️ Panel Admin</h3>
+          <ul class="admin-list" id="offerList"></ul>
+          
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+            <input type="text" id="newOffer" placeholder="Oferta (ej: 10% Desc.)" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: sans-serif; font-size: 0.85rem;">
+            <div style="display: flex; gap: 5px;">
+              <input type="number" id="newOfferCupos" placeholder="Cupos" min="0" value="5" style="width: 80px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: sans-serif; font-size: 0.85rem;">
+              <button class="btn-danger" style="background: #d4af37; color: #333; flex-grow: 1;" onclick="addOffer()">Añadir Oferta</button>
+            </div>
+          </div>
+
+          <!-- TARJETA COPIAR PUBLICACIÓN SOCIAL -->
+          <div class="copy-card">
+            <p style="font-size: 0.75rem; color: #d4af37; font-family: sans-serif; margin-bottom: 5px;"><strong>📢 Tarjeta para Redes Sociales:</strong></p>
+            <textarea id="socialText" readonly></textarea>
+            <button class="btn-info" style="width: 100%; margin-top: 5px;" onclick="copySocialText()">📋 Copiar Lista para Redes</button>
+          </div>
+
+          <button class="btn-danger" style="width: 100%; margin-bottom: 5px;" onclick="resetUsedPhones()">Reiniciar Teléfonos Usados</button>
+          <button class="btn-danger" style="width: 100%; background: #555;" onclick="logoutAdmin()">Cerrar Panel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE PREMIO -->
+  <div class="modal" id="prizeModal">
+    <div class="modal-frame">
+      <div class="modal-content">
+        <h2 id="modalTitle" class="modal-title">¡Felicidades! 🎉</h2>
+        <p id="modalSubtext" style="font-family: sans-serif; font-size: 0.95rem;">Has ganado el siguiente premio:</p>
+        <p id="prizeText"></p>
+        
+        <a href="#" id="wsLink" target="_blank" class="btn-whatsapp-claim">
+          📲 Reclamar mi Premio
+        </a>
+
+        <button id="closeModalBtn" class="btn-close-modal" style="display: none;" onclick="closeModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ADMIN_PASSWORD = "admin"; 
+    const MY_WHATSAPP_NUMBER = "5541999932957"; 
+
+    let defaultOffers = [
+      { name: "360 Saldo Telf", cupos: 3 },
+      { name: "NADA :(", cupos: 9999 },
+      { name: "2 500 CUP", cupos: 2 },
+      { name: "NADA :(", cupos: 9999 },
+      { name: "USD 10 Cupón", cupos: 5 }
+    ];
+
+    let defaultWinners = [
+      { name: "Carlos M.", prize: "360 Saldo Telf", phone: "XXXX" },
+      { name: "Elena R.", prize: "USD 10 Cupón", phone: "XXXX" },
+      { name: "Marcos P.", prize: "2 500 CUP", phone: "XXXX" }
+    ];
+
+    let offers = JSON.parse(localStorage.getItem("ruleta_offers")) || defaultOffers;
+    let usedPhones = JSON.parse(localStorage.getItem("ruleta_used_phones")) || [];
+    let winnersHistory = JSON.parse(localStorage.getItem("ruleta_winners_history")) || defaultWinners;
+
+    const colors = ["#b22222", "#000000", "#b22222", "#000000", "#b22222", "#000000"];
+    const textColors = ["#fff", "#d4af37", "#fff", "#d4af37", "#fff", "#d4af37"];
+    
+    const canvas = document.getElementById("wheel");
+    const ctx = canvas.getContext("2d");
+    let isSpinning = false;
+    let currentAngle = 0;
+
+    function saveOffers() {
+      localStorage.setItem("ruleta_offers", JSON.stringify(offers));
+    }
+
+    function saveUsedPhone(phone) {
+      usedPhones.push(phone);
+      localStorage.setItem("ruleta_used_phones", JSON.stringify(usedPhones));
+    }
+
+    function logWinner(name, phone, prize) {
+      // Ocultar parcialmente el nombre para privacidad
+      const parts = name.split(" ");
+      const anonymousName = parts[0] + (parts[1] ? " " + parts[1][0] + "." : "");
+      
+      const record = {
+        name: anonymousName,
+        phone: phone,
+        prize: prize,
+        date: new Date().toLocaleString("es-ES")
+      };
+      
+      winnersHistory.unshift(record); // Agregar al inicio
+      localStorage.setItem("ruleta_winners_history", JSON.stringify(winnersHistory));
+      renderCredits();
+      updateSocialText();
+    }
+
+    function renderCredits() {
+      const creditsContainer = document.getElementById("publicCreditsList");
+      creditsContainer.innerHTML = "";
+      
+      if (winnersHistory.length === 0) {
+        creditsContainer.innerHTML = `<div class="credit-item">Aún no hay ganadores en esta ronda. ¡Sé el primero!</div>`;
+        return;
+      }
+
+      winnersHistory.forEach(item => {
+        creditsContainer.innerHTML += `
+          <div class="credit-item">
+            🎉 <strong>${item.name}</strong> ha ganado <span>${item.prize}</span>
+          </div>
+        `;
+      });
+    }
+
+    function updateSocialText() {
+      const textarea = document.getElementById("socialText");
+      let text = "✈️ ¡RESULTADOS OFICIALES DE LA RULETA! ✈️\n\n🎉 Felicidades a nuestros ganadores de Viajando Latinoamérica:\n\n";
+      
+      winnersHistory.forEach((w, idx) => {
+        text += `🥇 ${w.name} - Ganó: ${w.prize}\n`;
+      });
+      
+      text += "\n¡Gracias a todos por participar! Atentos a próximas promociones. 🌟";
+      textarea.value = text;
+    }
+
+    function copySocialText() {
+      const textarea = document.getElementById("socialText");
+      textarea.select();
+      document.execCommand("copy");
+      alert("📋 ¡Lista de ganadores copiada al portapapeles! Ya puedes pegarla en tu Facebook, Instagram o Estados de WhatsApp.");
+    }
+
+    function drawWheel() {
+      const numSegments = offers.length;
+      const arcSize = (2 * Math.PI) / numSegments;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let i = 0; i < numSegments; i++) {
+        const angle = currentAngle + i * arcSize;
+        ctx.beginPath();
+        
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.moveTo(250, 250);
+        ctx.arc(250, 250, 250, angle, angle + arcSize);
+        ctx.lineTo(250, 250);
+        ctx.fill();
+        
+        ctx.strokeStyle = "#d4af37";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.save();
+        ctx.fillStyle = textColors[i % textColors.length];
+        
+        const text = offers[i].name;
+        let fontSize = 18;
+        ctx.font = `bold ${fontSize}px 'Times New Roman'`;
+        
+        while (ctx.measureText(text).width > 160 && fontSize > 10) {
+          fontSize--;
+          ctx.font = `bold ${fontSize}px 'Times New Roman'`;
+        }
+
+        ctx.translate(250, 250);
+        ctx.rotate(angle + arcSize / 2);
+        ctx.textAlign = "right";
+        ctx.fillText(text, 230, 5);
+        ctx.restore();
+      }
+      
+      ctx.beginPath();
+      ctx.arc(250, 250, 35, 0, 2 * Math.PI);
+      ctx.fillStyle = "#d4af37";
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    function spinWheel() {
+      const name = document.getElementById("userName").value.trim();
+      const phone = document.getElementById("userPhone").value.trim();
+
+      if (!name || !phone) {
+        alert("Por favor ingresa tu Nombre y WhatsApp antes de girar.");
+        return;
+      }
+
+      if (usedPhones.includes(phone)) {
+        alert("⛔ Este número de WhatsApp ya ha participado en la ruleta. Solo se permite 1 intento por persona.");
+        return;
+      }
+
+      if (isSpinning) return;
+      isSpinning = true;
+      document.getElementById("spinBtn").disabled = true;
+
+      const totalRotation = Math.PI * 2 * 8 + Math.random() * Math.PI * 2;
+      const duration = 4500;
+      const start = performance.now();
+
+      function animate(time) {
+        const elapsed = time - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeOut = 1 - Math.pow(1 - progress, 4);
+        
+        currentAngle = easeOut * totalRotation;
+        drawWheel();
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          isSpinning = false;
+          saveUsedPhone(phone);
+          calculatePrize(name, phone);
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function calculatePrize(name, phone) {
+      const numSegments = offers.length;
+      const arcSize = (2 * Math.PI) / numSegments;
+      
+      const normalizedAngle = (Math.PI * 1.5 - (currentAngle % (Math.PI * 2))) % (Math.PI * 2);
+      const winningIndex = Math.floor(normalizedAngle / arcSize);
+      const wonOffer = offers[winningIndex];
+
+      const modalTitle = document.getElementById("modalTitle");
+      const modalSubtext = document.getElementById("modalSubtext");
+      const prizeText = document.getElementById("prizeText");
+      const wsLink = document.getElementById("wsLink");
+      const closeModalBtn = document.getElementById("closeModalBtn");
+
+      if (wonOffer.name.toUpperCase().includes("NADA")) {
+        modalTitle.innerText = "¡LÁSTIMA! 😔";
+        modalTitle.style.color = "#666";
+        modalSubtext.innerText = "No has ganado ningún premio esta vez. Tu única oportunidad de la promoción ha sido utilizada.";
+        prizeText.innerText = "Sin Premio";
+        wsLink.style.display = "none";
+        closeModalBtn.style.display = "inline-block";
+      } 
+      else if (wonOffer.cupos <= 0) {
+        modalTitle.innerText = "PREMIO AGOTADO 🚫";
+        modalTitle.style.color = "#e63946";
+        modalSubtext.innerText = "Lo sentimos, los cupos para este premio se agotaron. Has consumido tu oportunidad hasta la próxima promoción.";
+        prizeText.innerText = wonOffer.name;
+        wsLink.style.display = "none";
+        closeModalBtn.style.display = "inline-block";
+      } 
+      else {
+        wonOffer.cupos--;
+        saveOffers();
+        updateAdminPanel();
+        
+        logWinner(name, phone, wonOffer.name);
+
+        modalTitle.innerText = "¡FELICIDADES! 🎉";
+        modalTitle.style.color = "#d9381e";
+        modalSubtext.innerText = "Has ganado el siguiente premio:";
+        prizeText.innerText = wonOffer.name;
+        
+        const message = `¡Hola! Mi nombre es ${encodeURIComponent(name)} (${encodeURIComponent(phone)}). Gané el premio "${encodeURIComponent(wonOffer.name)}" en la Ruleta. ¡Quiero reclamarlo!`;
+        wsLink.href = `https://wa.me/${MY_WHATSAPP_NUMBER}?text=${message}`;
+        wsLink.style.display = "flex";
+        closeModalBtn.style.display = "none";
+      }
+
+      document.getElementById("prizeModal").style.display = "flex";
+    }
+
+    function closeModal() {
+      document.getElementById("prizeModal").style.display = "none";
+    }
+
+    function promptPassword() {
+      const inputPass = prompt("Ingresa la contraseña de administrador:");
+      if (inputPass === ADMIN_PASSWORD) {
+        document.getElementById("adminFrame").style.display = "block";
+        document.getElementById("showAdminBtn").style.display = "none";
+      } else if (inputPass !== null) {
+        alert("Contraseña incorrecta.");
+      }
+    }
+
+    function logoutAdmin() {
+      document.getElementById("adminFrame").style.display = "none";
+      document.getElementById("showAdminBtn").style.display = "flex";
+    }
+
+    function updateAdminPanel() {
+      const list = document.getElementById("offerList");
+      list.innerHTML = "";
+      offers.forEach((offer, index) => {
+        const badgeColor = offer.cupos > 0 ? '#d4af37' : '#e63946';
+        const badgeText = offer.name.includes("NADA") ? "∞" : `${offer.cupos} cupos`;
+        
+        list.innerHTML += `
+          <li>
+            <span>${offer.name}</span>
+            <div>
+              <span class="cupo-badge" style="background:${badgeColor}">${badgeText}</span>
+              <button class="btn-danger" onclick="removeOffer(${index})">✕</button>
+            </div>
+          </li>
+        `;
+      });
+      drawWheel();
+    }
+
+    function addOffer() {
+      const nameInput = document.getElementById("newOffer");
+      const cuposInput = document.getElementById("newOfferCupos");
+      
+      if (nameInput.value.trim() !== "") {
+        offers.push({
+          name: nameInput.value.trim(),
+          cupos: parseInt(cuposInput.value) || 1
+        });
+        nameInput.value = "";
+        cuposInput.value = "5";
+        saveOffers();
+        updateAdminPanel();
+      }
+    }
+
+    function removeOffer(index) {
+      if (offers.length <= 2) {
+        alert("La ruleta debe conservar al menos 2 opciones.");
+        return;
+      }
+      offers.splice(index, 1);
+      saveOffers();
+      updateAdminPanel();
+    }
+
+    function resetUsedPhones() {
+      if (confirm("¿Seguro que deseas limpiar la lista de WhatsApps que ya jugaron para permitirles intentar de nuevo?")) {
+        usedPhones = [];
+        localStorage.removeItem("ruleta_used_phones");
+        alert("Lista de teléfonos limpiada correctamente.");
+      }
+    }
+
+    // Inicializar renderizado
+    renderCredits();
+    updateSocialText();
+    updateAdminPanel();
+  </script>
+</body>
+</html>
