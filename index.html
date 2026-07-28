@@ -5,10 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ruleta de la Suerte - Viajando Latinoamérica</title>
   
-  <!-- SDKs de Firebase Firestore -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
-
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; }
 
@@ -428,35 +424,12 @@
   </div>
 
   <script>
-    // ==========================================
-    // CONFIGURACIÓN DE FIREBASE (CONEXIÓN A "baseruleta")
-    // ==========================================
-    const firebaseConfig = {
-      apiKey: "AIzaSyCYIVQvdwtz6LYCdX_gqZXJE0OSi8RbiYw",
-      authDomain: "ruleta-viajan-lat.firebaseapp.com",
-      projectId: "ruleta-viajan-lat",
-      storageBucket: "ruleta-viajan-lat.firebasestorage.app",
-      messagingSenderId: "1057891382288",
-      appId: "1:1057891382288:web:3c2be406a8fbc1bd950695",
-      measurementId: "G-2835JCYD0Q"
-    };
-
-    const app = firebase.initializeApp(firebaseConfig);
-    
-    // Apuntamos a la base "baseruleta" de la captura
-    let db;
-    try {
-      db = firebase.firestore(app, "baseruleta");
-    } catch (e) {
-      db = firebase.firestore();
-    }
-
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    // Cargar ofertas desde localStorage o inicializar por defecto
-    const savedOffers = localStorage.getItem("ruleta_offers");
-    let offers = savedOffers ? JSON.parse(savedOffers) : [
+    // CARGAR OFERTAS DESDE MEMORIA LOCAL (IMPOSIBLE DE BORRAR AL RECARGAR)
+    const storedOffers = localStorage.getItem("ruleta_offers_v2");
+    let offers = storedOffers ? JSON.parse(storedOffers) : [
       { name: "360 Saldo Telf", cupos: 3 },
       { name: "NADA :(", cupos: 9999 },
       { name: "2 500 CUP", cupos: 2 },
@@ -464,11 +437,11 @@
       { name: "USD 10 Cupón", cupos: 5 }
     ];
 
-    const savedPhones = localStorage.getItem("ruleta_phones");
-    let usedPhones = savedPhones ? JSON.parse(savedPhones) : [];
+    const storedPhones = localStorage.getItem("ruleta_phones_v2");
+    let usedPhones = storedPhones ? JSON.parse(storedPhones) : [];
     
-    const savedWinners = localStorage.getItem("ruleta_winners");
-    let winnersHistory = savedWinners ? JSON.parse(savedWinners) : [];
+    const storedWinners = localStorage.getItem("ruleta_winners_v2");
+    let winnersHistory = storedWinners ? JSON.parse(storedWinners) : [];
 
     const colors = ["#b22222", "#000000", "#b22222", "#000000", "#b22222", "#000000"];
     const textColors = ["#fff", "#d4af37", "#fff", "#d4af37", "#fff", "#d4af37"];
@@ -478,18 +451,11 @@
     let isSpinning = false;
     let currentAngle = 0;
 
-    // --- GUARDADO HÍBRIDO (LOCAL + NUBE) ---
-    function saveOffersToCloud() {
-      // 1. Guarda al instante en el navegador
-      localStorage.setItem("ruleta_offers", JSON.stringify(offers));
-      
-      // 2. Intenta respaldar en Firestore
-      if (db) {
-        db.collection("config").doc("offers").set({ list: offers }).catch(() => {});
-      }
+    function saveOffersLocally() {
+      localStorage.setItem("ruleta_offers_v2", JSON.stringify(offers));
     }
 
-    function saveWinnerToCloud(name, phone, prize) {
+    function saveWinnerLocally(name, phone, prize) {
       const parts = name.split(" ");
       const anonymousName = parts[0] + (parts[1] ? " " + parts[1][0] + "." : "");
       
@@ -501,48 +467,14 @@
       };
       
       winnersHistory.unshift(record);
-      localStorage.setItem("ruleta_winners", JSON.stringify(winnersHistory));
-
-      if (db) {
-        db.collection("config").doc("winners").set({ list: winnersHistory }).catch(() => {});
-      }
+      localStorage.setItem("ruleta_winners_v2", JSON.stringify(winnersHistory));
+      renderCredits();
+      updateSocialText();
     }
 
-    function saveUsedPhoneToCloud(phone) {
+    function saveUsedPhoneLocally(phone) {
       usedPhones.push(phone);
-      localStorage.setItem("ruleta_phones", JSON.stringify(usedPhones));
-
-      if (db) {
-        db.collection("config").doc("usedPhones").set({ list: usedPhones }).catch(() => {});
-      }
-    }
-
-    function listenToDatabase() {
-      if (!db) return;
-
-      db.collection("config").doc("offers").onSnapshot((doc) => {
-        if (doc.exists && doc.data().list && doc.data().list.length > 0) {
-          offers = doc.data().list;
-          localStorage.setItem("ruleta_offers", JSON.stringify(offers));
-          updateAdminPanel();
-        }
-      }, () => {});
-
-      db.collection("config").doc("winners").onSnapshot((doc) => {
-        if (doc.exists && doc.data().list) {
-          winnersHistory = doc.data().list;
-          localStorage.setItem("ruleta_winners", JSON.stringify(winnersHistory));
-          renderCredits();
-          updateSocialText();
-        }
-      }, () => {});
-
-      db.collection("config").doc("usedPhones").onSnapshot((doc) => {
-        if (doc.exists && doc.data().list) {
-          usedPhones = doc.data().list;
-          localStorage.setItem("ruleta_phones", JSON.stringify(usedPhones));
-        }
-      }, () => {});
+      localStorage.setItem("ruleta_phones_v2", JSON.stringify(usedPhones));
     }
 
     function renderCredits() {
@@ -665,7 +597,7 @@
           requestAnimationFrame(animate);
         } else {
           isSpinning = false;
-          saveUsedPhoneToCloud(phone);
+          saveUsedPhoneLocally(phone);
           calculatePrize(name, phone);
         }
       }
@@ -705,8 +637,8 @@
       } 
       else {
         wonOffer.cupos--;
-        saveOffersToCloud();
-        saveWinnerToCloud(name, phone, wonOffer.name);
+        saveOffersLocally();
+        saveWinnerLocally(name, phone, wonOffer.name);
 
         modalTitle.innerText = "¡FELICIDADES! 🎉";
         modalTitle.style.color = "#d9381e";
@@ -773,8 +705,8 @@
         nameInput.value = "";
         cuposInput.value = "5";
         
+        saveOffersLocally();
         updateAdminPanel();
-        saveOffersToCloud();
       }
     }
 
@@ -785,24 +717,22 @@
       }
       offers.splice(index, 1);
       
+      saveOffersLocally();
       updateAdminPanel();
-      saveOffersToCloud();
     }
 
     function resetUsedPhones() {
       if (confirm("¿Seguro que deseas limpiar la lista de WhatsApps que ya jugaron?")) {
         usedPhones = [];
-        localStorage.setItem("ruleta_phones", JSON.stringify([]));
-        if (db) db.collection("config").doc("usedPhones").set({ list: [] });
+        localStorage.setItem("ruleta_phones_v2", JSON.stringify([]));
         alert("Lista de teléfonos limpiada.");
       }
     }
 
-    // Inicializar interfaz
+    // Inicialización inmediata
     updateAdminPanel();
     renderCredits();
     updateSocialText();
-    listenToDatabase();
   </script>
 </body>
 </html>
