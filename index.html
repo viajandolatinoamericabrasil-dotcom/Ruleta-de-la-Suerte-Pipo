@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ruleta de la Suerte - Viajando Latinoamérica</title>
   
-  <!-- SDKs de Firebase Firestore -->
+  <!-- SDKs de Firebase Firestore (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 
@@ -428,7 +428,7 @@
   </div>
 
   <script>
-    // Configuración Firebase
+    // 1. Configuración de Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyCYIVQvdwtz6LYCdX_gqZXJE0OSi8RbiYw",
       authDomain: "ruleta-viajan-lat.firebaseapp.com",
@@ -439,14 +439,10 @@
       measurementId: "G-2835JCYD0Q"
     };
 
-    // Inicialización limpia
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    // Lista por defecto (en lo que conecta la base de datos)
+    // Estado inicial de ofertas
     let offers = [
       { name: "360 Saldo Telf", cupos: 3 },
       { name: "NADA :(", cupos: 9999 },
@@ -457,8 +453,7 @@
 
     let usedPhones = [];
     let winnersHistory = [];
-    let firebaseReady = false;
-
+    
     const colors = ["#b22222", "#000000", "#b22222", "#000000", "#b22222", "#000000"];
     const textColors = ["#fff", "#d4af37", "#fff", "#d4af37", "#fff", "#d4af37"];
     
@@ -467,46 +462,49 @@
     let isSpinning = false;
     let currentAngle = 0;
 
-    // Escuchar cambios globales en tiempo real desde Firestore
+    // Conectar a Firebase de forma segura
+    let db = null;
+    try {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      db = firebase.firestore();
+    } catch (e) {
+      console.warn("Fallo al inicializar Firebase, funcionando en modo local:", e);
+    }
+
     function listenToDatabase() {
       if (!db) return;
 
-      // Escuchar ofertas
       db.collection("config").doc("offers").onSnapshot((doc) => {
         if (doc.exists && doc.data().list && doc.data().list.length > 0) {
           offers = doc.data().list;
-          firebaseReady = true;
-          document.getElementById("spinBtn").disabled = false;
           updateAdminPanel();
           drawWheel();
         }
-      }, (err) => console.log("Error consultando ofertas en nube:", err));
+      }, (err) => console.log("Aviso ofertas:", err));
 
-      // Escuchar ganadores
       db.collection("config").doc("winners").onSnapshot((doc) => {
         if (doc.exists && doc.data().list) {
           winnersHistory = doc.data().list;
           renderCredits();
           updateSocialText();
         }
-      }, (err) => console.log("Error consultando ganadores:", err));
+      }, (err) => console.log("Aviso ganadores:", err));
 
-      // Escuchar teléfonos usados
       db.collection("config").doc("usedPhones").onSnapshot((doc) => {
         if (doc.exists && doc.data().list) {
           usedPhones = doc.data().list;
         }
-      }, (err) => console.log("Error consultando teléfonos:", err));
+      }, (err) => console.log("Aviso teléfonos:", err));
     }
 
     async function saveOffersToCloud() {
       if (!db) return;
       try {
         await db.collection("config").doc("offers").set({ list: offers });
-        console.log("Ofertas actualizadas en la nube");
       } catch (e) {
-        console.error(e);
-        alert("Error guardando las ofertas.");
+        console.error("Error al guardar ofertas:", e);
       }
     }
 
@@ -521,20 +519,13 @@
         date: new Date().toLocaleString("es-ES")
       };
 
-      db.runTransaction(async (transaction) => {
-        const ref = db.collection("config").doc("winners");
-        const snap = await transaction.get(ref);
-        let list = [];
-        if (snap.exists) {
-          list = snap.data().list || [];
-        }
-        list.unshift(record);
-        transaction.set(ref, { list: list });
-        winnersHistory = list;
-      }).then(() => {
-        renderCredits();
-        updateSocialText();
-      }).catch(console.error);
+      winnersHistory.unshift(record);
+      renderCredits();
+      updateSocialText();
+
+      if (db) {
+        db.collection("config").doc("winners").set({ list: winnersHistory }).catch(() => {});
+      }
     }
 
     function saveUsedPhoneToCloud(phone) {
@@ -709,28 +700,9 @@
         closeModalBtn.style.display = "inline-block";
       } 
       else {
-        db.runTransaction(async (transaction) => {
-          const ref = db.collection("config").doc("offers");
-          const snap = await transaction.get(ref);
-
-          if (!snap.exists) {
-            throw "No existe el documento de ofertas.";
-          }
-          const data = snap.data();
-          const newOffers = data.list;
-          const offer = newOffers[winningIndex];
-          if (offer.cupos <= 0) {
-            throw "Premio agotado.";
-          }
-          offer.cupos--;
-          transaction.update(ref, { list: newOffers });
-          offers = newOffers;
-        }).then(() => {
-          saveWinnerToCloud(name, phone, wonOffer.name);
-        }).catch((err) => {
-          alert(err);
-          return;
-        });
+        wonOffer.cupos--;
+        saveOffersToCloud();
+        saveWinnerToCloud(name, phone, wonOffer.name);
 
         modalTitle.innerText = "¡FELICIDADES! 🎉";
         modalTitle.style.color = "#d9381e";
@@ -821,10 +793,12 @@
       }
     }
 
-    // Inicialización al cargar la página
+    // Dibujar pantalla inmediatamente al cargar
     updateAdminPanel();
     renderCredits();
     updateSocialText();
+
+    // Iniciar escucha en la nube
     listenToDatabase();
   </script>
 </body>
