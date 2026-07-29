@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ruleta de la Suerte - Viajando Latinoamérica</title>
+  
+  <!-- SDKs de Firebase Firestore -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; }
@@ -385,7 +389,7 @@
         <div class="admin-panel">
           <h3>⚙️ Panel Admin</h3>
           <ul class="admin-list" id="offerList"></ul>
-
+          
           <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
             <input type="text" id="newOffer" placeholder="Oferta (ej: 10% Desc.)" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: sans-serif; font-size: 0.85rem;">
             <div style="display: flex; gap: 5px;">
@@ -413,7 +417,7 @@
         <h2 id="modalTitle" class="modal-title">¡Felicidades! 🎉</h2>
         <p id="modalSubtext" style="font-family: sans-serif; font-size: 0.95rem;">Has ganado el siguiente premio:</p>
         <p id="prizeText"></p>
-
+        
         <a href="#" id="wsLink" target="_blank" class="btn-whatsapp-claim">
           📲 Reclamar mi Premio
         </a>
@@ -424,12 +428,32 @@
   </div>
 
   <script>
+    // Configuración Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyCYIVQvdwtz6LYCdX_gqZXJE0OSi8RbiYw",
+      authDomain: "ruleta-viajan-lat.firebaseapp.com",
+      projectId: "ruleta-viajan-lat",
+      storageBucket: "ruleta-viajan-lat.firebasestorage.app",
+      messagingSenderId: "1057891382288",
+      appId: "1:1057891382288:web:3c2be406a8fbc1bd950695",
+      measurementId: "G-2835JCYD0Q"
+    };
+
+    const app = firebase.initializeApp(firebaseConfig);
+    
+    // Conectar explícitamente a la base "baseruleta"
+    let db;
+    try {
+      db = firebase.firestore(app, "baseruleta");
+    } catch (e) {
+      db = firebase.firestore();
+    }
+
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    // OBTENER OFERTAS DE ALMACENAMIENTO PERMANENTE
-    const savedOffersData = localStorage.getItem("ruleta_offers_fix_v1");
-    let offers = savedOffersData ? JSON.parse(savedOffersData) : [
+    // Lista por defecto
+    let offers = [
       { name: "360 Saldo Telf", cupos: 3 },
       { name: "NADA :(", cupos: 9999 },
       { name: "2 500 CUP", cupos: 2 },
@@ -437,28 +461,61 @@
       { name: "USD 10 Cupón", cupos: 5 }
     ];
 
-    const savedPhonesData = localStorage.getItem("ruleta_phones_fix_v1");
-    let usedPhones = savedPhonesData ? JSON.parse(savedPhonesData) : [];
-
-    const savedWinnersData = localStorage.getItem("ruleta_winners_fix_v1");
-    let winnersHistory = savedWinnersData ? JSON.parse(savedWinnersData) : [];
+    let usedPhones = [];
+    let winnersHistory = [];
 
     const colors = ["#b22222", "#000000", "#b22222", "#000000", "#b22222", "#000000"];
     const textColors = ["#fff", "#d4af37", "#fff", "#d4af37", "#fff", "#d4af37"];
-
+    
     const canvas = document.getElementById("wheel");
     const ctx = canvas.getContext("2d");
     let isSpinning = false;
     let currentAngle = 0;
 
-    function saveOffersLocally() {
-      localStorage.setItem("ruleta_offers_fix_v1", JSON.stringify(offers));
+    // Conexión activa a Firestore
+    function listenToDatabase() {
+      if (!db) return;
+
+      // 1. Ofertas
+      db.collection("config").doc("offers").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list && doc.data().list.length > 0) {
+          offers = doc.data().list;
+          updateAdminPanel();
+          drawWheel();
+        } else {
+          // Si el documento NO existe en la base baseruleta, crearlo de una vez
+          saveOffersToCloud();
+        }
+      }, (err) => console.error("Error consultando ofertas:", err));
+
+      // 2. Ganadores
+      db.collection("config").doc("winners").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          winnersHistory = doc.data().list;
+          renderCredits();
+          updateSocialText();
+        }
+      }, (err) => console.error("Error consultando ganadores:", err));
+
+      // 3. Teléfonos
+      db.collection("config").doc("usedPhones").onSnapshot((doc) => {
+        if (doc.exists && doc.data().list) {
+          usedPhones = doc.data().list;
+        }
+      }, (err) => console.error("Error consultando teléfonos:", err));
     }
 
-    function saveWinnerLocally(name, phone, prize) {
+    function saveOffersToCloud() {
+      if (!db) return;
+      db.collection("config").doc("offers").set({ list: offers })
+        .then(() => console.log("¡Ofertas guardadas en baseruleta!"))
+        .catch((err) => console.error("Error guardando ofertas:", err));
+    }
+
+    function saveWinnerToCloud(name, phone, prize) {
       const parts = name.split(" ");
       const anonymousName = parts[0] + (parts[1] ? " " + parts[1][0] + "." : "");
-
+      
       const record = {
         name: anonymousName,
         phone: phone,
@@ -467,20 +524,25 @@
       };
 
       winnersHistory.unshift(record);
-      localStorage.setItem("ruleta_winners_fix_v1", JSON.stringify(winnersHistory));
       renderCredits();
       updateSocialText();
+
+      if (db) {
+        db.collection("config").doc("winners").set({ list: winnersHistory }).catch(() => {});
+      }
     }
 
-    function saveUsedPhoneLocally(phone) {
+    function saveUsedPhoneToCloud(phone) {
       usedPhones.push(phone);
-      localStorage.setItem("ruleta_phones_fix_v1", JSON.stringify(usedPhones));
+      if (db) {
+        db.collection("config").doc("usedPhones").set({ list: usedPhones }).catch(() => {});
+      }
     }
 
     function renderCredits() {
       const creditsContainer = document.getElementById("publicCreditsList");
       creditsContainer.innerHTML = "";
-
+      
       if (winnersHistory.length === 0) {
         creditsContainer.innerHTML = `<div class="credit-item">Aún no hay ganadores en esta ronda. ¡Sé el primero!</div>`;
         return;
@@ -498,11 +560,11 @@
     function updateSocialText() {
       const textarea = document.getElementById("socialText");
       let text = "✈️ ¡RESULTADOS OFICIALES DE LA RULETA! ✈️\n\n🎉 Felicidades a nuestros ganadores de Viajando Latinoamérica:\n\n";
-
+      
       winnersHistory.forEach((w) => {
         text += `🥇 ${w.name} - Ganó: ${w.prize}\n`;
       });
-
+      
       text += "\n¡Gracias a todos por participar! Atentos a próximas promociones. 🌟";
       textarea.value = text;
     }
@@ -517,31 +579,31 @@
     function drawWheel() {
       const numSegments = offers.length;
       if (numSegments === 0) return;
-
+      
       const arcSize = (2 * Math.PI) / numSegments;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       for (let i = 0; i < numSegments; i++) {
-        const angle = currentAngle + i * arcSize;
+        const angle = (i * arcSize) + currentAngle;
         ctx.beginPath();
-
+        
         ctx.fillStyle = colors[i % colors.length];
         ctx.moveTo(250, 250);
         ctx.arc(250, 250, 250, angle, angle + arcSize);
         ctx.lineTo(250, 250);
         ctx.fill();
-
+        
         ctx.strokeStyle = "#d4af37";
         ctx.lineWidth = 2;
         ctx.stroke();
 
         ctx.save();
         ctx.fillStyle = textColors[i % textColors.length];
-
+        
         const text = offers[i].name;
         let fontSize = 18;
         ctx.font = `bold ${fontSize}px 'Times New Roman'`;
-
+        
         while (ctx.measureText(text).width > 160 && fontSize > 10) {
           fontSize--;
           ctx.font = `bold ${fontSize}px 'Times New Roman'`;
@@ -553,7 +615,7 @@
         ctx.fillText(text, 230, 5);
         ctx.restore();
       }
-
+      
       ctx.beginPath();
       ctx.arc(250, 250, 35, 0, 2 * Math.PI);
       ctx.fillStyle = "#d4af37";
@@ -589,7 +651,7 @@
         const elapsed = time - start;
         const progress = Math.min(elapsed / duration, 1);
         const easeOut = 1 - Math.pow(1 - progress, 4);
-
+        
         currentAngle = easeOut * totalRotation;
         drawWheel();
 
@@ -597,7 +659,7 @@
           requestAnimationFrame(animate);
         } else {
           isSpinning = false;
-          saveUsedPhoneLocally(phone);
+          saveUsedPhoneToCloud(phone);
           calculatePrize(name, phone);
         }
       }
@@ -608,9 +670,15 @@
     function calculatePrize(name, phone) {
       const numSegments = offers.length;
       const arcSize = (2 * Math.PI) / numSegments;
+      const fullCircle = Math.PI * 2;
 
-      const normalizedAngle = (Math.PI * 1.5 - (currentAngle % (Math.PI * 2))) % (Math.PI * 2);
-      const winningIndex = Math.floor(normalizedAngle / arcSize);
+      const finalAngle = currentAngle % fullCircle;
+      const pointerAngle = (fullCircle - finalAngle + (Math.PI * 1.5)) % fullCircle;
+
+      let winningIndex = Math.floor(pointerAngle / arcSize);
+      if (winningIndex >= offers.length) {
+        winningIndex = offers.length - 1;
+      }
       const wonOffer = offers[winningIndex];
 
       const modalTitle = document.getElementById("modalTitle");
@@ -637,14 +705,14 @@
       } 
       else {
         wonOffer.cupos--;
-        saveOffersLocally();
-        saveWinnerLocally(name, phone, wonOffer.name);
+        saveOffersToCloud();
+        saveWinnerToCloud(name, phone, wonOffer.name);
 
         modalTitle.innerText = "¡FELICIDADES! 🎉";
         modalTitle.style.color = "#d9381e";
         modalSubtext.innerText = "Has ganado el siguiente premio:";
         prizeText.innerText = wonOffer.name;
-
+        
         const message = `¡Hola! Mi nombre es ${encodeURIComponent(name)} (${encodeURIComponent(phone)}). Gané el premio "${encodeURIComponent(wonOffer.name)}" en la Ruleta. ¡Quiero reclamarlo!`;
         wsLink.href = `https://wa.me/${MY_WHATSAPP_NUMBER}?text=${message}`;
         wsLink.style.display = "flex";
@@ -679,7 +747,7 @@
       offers.forEach((offer, index) => {
         const badgeColor = offer.cupos > 0 ? '#d4af37' : '#e63946';
         const badgeText = offer.name.includes("NADA") ? "∞" : `${offer.cupos} cupos`;
-
+        
         list.innerHTML += `
           <li>
             <span>${offer.name}</span>
@@ -696,7 +764,7 @@
     function addOffer() {
       const nameInput = document.getElementById("newOffer");
       const cuposInput = document.getElementById("newOfferCupos");
-
+      
       if (nameInput.value.trim() !== "") {
         offers.push({
           name: nameInput.value.trim(),
@@ -704,9 +772,9 @@
         });
         nameInput.value = "";
         cuposInput.value = "5";
-
-        saveOffersLocally();
+        
         updateAdminPanel();
+        saveOffersToCloud();
       }
     }
 
@@ -716,23 +784,26 @@
         return;
       }
       offers.splice(index, 1);
-
-      saveOffersLocally();
+      
       updateAdminPanel();
+      saveOffersToCloud();
     }
 
     function resetUsedPhones() {
       if (confirm("¿Seguro que deseas limpiar la lista de WhatsApps que ya jugaron?")) {
         usedPhones = [];
-        localStorage.setItem("ruleta_phones_fix_v1", JSON.stringify([]));
+        if (db) db.collection("config").doc("usedPhones").set({ list: [] });
         alert("Lista de teléfonos limpiada.");
       }
     }
 
-    // Dibujar inmediatamente al cargar
+    // Dibujar pantalla inmediatamente
     updateAdminPanel();
     renderCredits();
     updateSocialText();
+
+    // Iniciar escucha activa en la nube
+    listenToDatabase();
   </script>
 </body>
 </html>
