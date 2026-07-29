@@ -439,31 +439,25 @@
       measurementId: "G-2835JCYD0Q"
     };
 
-    // Inicialización segura apuntando a la base "baseruleta"
+    // Inicialización limpia
     const app = firebase.initializeApp(firebaseConfig);
-    let db;
-    try {
-      firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-console.log("Firebase conectado");
-    } catch (e) {
-      db = firebase.firestore();
-    }
+    const db = firebase.firestore();
 
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    // Ofertas (siempre llegan desde Firebase)
-let offers = [];
+    // Lista por defecto (en lo que conecta la base de datos)
+    let offers = [
+      { name: "360 Saldo Telf", cupos: 3 },
+      { name: "NADA :(", cupos: 9999 },
+      { name: "2 500 CUP", cupos: 2 },
+      { name: "NADA :(", cupos: 9999 },
+      { name: "USD 10 Cupón", cupos: 5 }
+    ];
 
-let firebaseReady = false;
-];
-
-    const storedPhones = localStorage.getItem("ruleta_phones_v3");
-    let usedPhones = storedPhones ? JSON.parse(storedPhones) : [];
-    
-    const storedWinners = localStorage.getItem("ruleta_winners_v3");
-    let winnersHistory = storedWinners ? JSON.parse(storedWinners) : [];
+    let usedPhones = [];
+    let winnersHistory = [];
+    let firebaseReady = false;
 
     const colors = ["#b22222", "#000000", "#b22222", "#000000", "#b22222", "#000000"];
     const textColors = ["#fff", "#d4af37", "#fff", "#d4af37", "#fff", "#d4af37"];
@@ -477,57 +471,44 @@ let firebaseReady = false;
     function listenToDatabase() {
       if (!db) return;
 
-      db.collection("config").doc("offers").get().then((doc) => {
-    console.log("Documento:", doc.exists);
-    console.log(doc.data());
-    if(doc.exists){
-        offers = doc.data().list;
-        console.log(offers);
-        updateAdminPanel();
-    }
-});
+      // Escuchar ofertas
+      db.collection("config").doc("offers").onSnapshot((doc) => {
         if (doc.exists && doc.data().list && doc.data().list.length > 0) {
-          offers = JSON.parse(JSON.stringify(doc.data().list));
-firebaseReady = true;
-if (!isSpinning) {
-    updateAdminPanel();
-    drawWheel();
-}
-document.getElementById("spinBtn").disabled = false;
-console.log("Ofertas sincronizadas:", offers);
+          offers = doc.data().list;
+          firebaseReady = true;
+          document.getElementById("spinBtn").disabled = false;
+          updateAdminPanel();
+          drawWheel();
         }
       }, (err) => console.log("Error consultando ofertas en nube:", err));
 
+      // Escuchar ganadores
       db.collection("config").doc("winners").onSnapshot((doc) => {
         if (doc.exists && doc.data().list) {
           winnersHistory = doc.data().list;
-          localStorage.setItem("ruleta_winners_v3", JSON.stringify(winnersHistory));
           renderCredits();
           updateSocialText();
         }
       }, (err) => console.log("Error consultando ganadores:", err));
 
+      // Escuchar teléfonos usados
       db.collection("config").doc("usedPhones").onSnapshot((doc) => {
         if (doc.exists && doc.data().list) {
           usedPhones = doc.data().list;
-          localStorage.setItem("ruleta_phones_v3", JSON.stringify(usedPhones));
         }
       }, (err) => console.log("Error consultando teléfonos:", err));
     }
+
     async function saveOffersToCloud() {
-  if (!db) return;
-  try {
-    await db.collection("config")
-      .doc("offers")
-      .set({
-        list: offers
-      });
-    console.log("Ofertas actualizadas");
-  } catch (e) {
-    console.error(e);
-    alert("Error guardando las ofertas.");
-  }
-}
+      if (!db) return;
+      try {
+        await db.collection("config").doc("offers").set({ list: offers });
+        console.log("Ofertas actualizadas en la nube");
+      } catch (e) {
+        console.error(e);
+        alert("Error guardando las ofertas.");
+      }
+    }
 
     function saveWinnerToCloud(name, phone, prize) {
       const parts = name.split(" ");
@@ -539,37 +520,25 @@ console.log("Ofertas sincronizadas:", offers);
         prize: prize,
         date: new Date().toLocaleString("es-ES")
       };
-      
-      if (!db) {
 
-    winnersHistory.unshift(record);
-    localStorage.setItem("ruleta_winners_v3", JSON.stringify(winnersHistory));
-    renderCredits();
-    updateSocialText();
-    return;
-}
-
-db.runTransaction(async(transaction)=>{
-    const ref=db.collection("config").doc("winners");
-    const snap=await transaction.get(ref);
-    let list=[];
-    if(snap.exists){
-        list=snap.data().list||[];
-    }
-    list.unshift(record);
-    transaction.set(ref,{
-        list:list
-    });
-    winnersHistory=list;
-}).then(()=>{
-    renderCredits();
-    updateSocialText();
-}).catch(console.error);
+      db.runTransaction(async (transaction) => {
+        const ref = db.collection("config").doc("winners");
+        const snap = await transaction.get(ref);
+        let list = [];
+        if (snap.exists) {
+          list = snap.data().list || [];
+        }
+        list.unshift(record);
+        transaction.set(ref, { list: list });
+        winnersHistory = list;
+      }).then(() => {
+        renderCredits();
+        updateSocialText();
+      }).catch(console.error);
     }
 
     function saveUsedPhoneToCloud(phone) {
       usedPhones.push(phone);
-      localStorage.setItem("ruleta_phones_v3", JSON.stringify(usedPhones));
       if (db) {
         db.collection("config").doc("usedPhones").set({ list: usedPhones }).catch(() => {});
       }
@@ -613,7 +582,6 @@ db.runTransaction(async(transaction)=>{
     }
 
     function drawWheel() {
-console.log("Ofertas:", offers);
       const numSegments = offers.length;
       if (numSegments === 0) return;
       
@@ -663,11 +631,9 @@ console.log("Ofertas:", offers);
     }
 
     function spinWheel() {
-    if (!firebaseReady) {
-        alert("Espere unos segundos. Estamos cargando las promociones.");
-        return;
-    }
-    const name = document.getElementById("userName").value.trim();
+      const name = document.getElementById("userName").value.trim();
+      const phone = document.getElementById("userPhone").value.trim();
+
       if (!name || !phone) {
         alert("Por favor ingresa tu Nombre y WhatsApp antes de girar.");
         return;
@@ -709,21 +675,16 @@ console.log("Ofertas:", offers);
     function calculatePrize(name, phone) {
       const numSegments = offers.length;
       const arcSize = (2 * Math.PI) / numSegments;
-      
       const fullCircle = Math.PI * 2;
 
-// Ángulo final de la ruleta
-const finalAngle = currentAngle % fullCircle;
+      const finalAngle = currentAngle % fullCircle;
+      const pointerAngle = (fullCircle - finalAngle + (Math.PI * 1.5)) % fullCircle;
 
-// La flecha está arriba (270°)
-const pointerAngle = (fullCircle - finalAngle + (Math.PI * 1.5)) % fullCircle;
-
-// Segmento ganador
-let winningIndex = Math.floor(pointerAngle / arcSize);
-if (winningIndex >= offers.length) {
-    winningIndex = offers.length - 1;
-}
-const wonOffer = offers[winningIndex];
+      let winningIndex = Math.floor(pointerAngle / arcSize);
+      if (winningIndex >= offers.length) {
+        winningIndex = offers.length - 1;
+      }
+      const wonOffer = offers[winningIndex];
 
       const modalTitle = document.getElementById("modalTitle");
       const modalSubtext = document.getElementById("modalSubtext");
@@ -749,31 +710,27 @@ const wonOffer = offers[winningIndex];
       } 
       else {
         db.runTransaction(async (transaction) => {
+          const ref = db.collection("config").doc("offers");
+          const snap = await transaction.get(ref);
 
-    const ref = db.collection("config").doc("offers");
-
-    const snap = await transaction.get(ref);
-
-    if (!snap.exists) {
-        throw "No existe el documento de ofertas.";
-    }
-    const data = snap.data();
-    const newOffers = data.list;
-    const offer = newOffers[winningIndex];
-    if (offer.cupos <= 0) {
-        throw "Premio agotado.";
-    }
-    offer.cupos--;
-    transaction.update(ref, {
-        list: newOffers
-    });
-    offers = newOffers;
-}).then(() => {
-    saveWinnerToCloud(name, phone, wonOffer.name);
-}).catch((err) => {
-    alert(err);
-    return;
-});
+          if (!snap.exists) {
+            throw "No existe el documento de ofertas.";
+          }
+          const data = snap.data();
+          const newOffers = data.list;
+          const offer = newOffers[winningIndex];
+          if (offer.cupos <= 0) {
+            throw "Premio agotado.";
+          }
+          offer.cupos--;
+          transaction.update(ref, { list: newOffers });
+          offers = newOffers;
+        }).then(() => {
+          saveWinnerToCloud(name, phone, wonOffer.name);
+        }).catch((err) => {
+          alert(err);
+          return;
+        });
 
         modalTitle.innerText = "¡FELICIDADES! 🎉";
         modalTitle.style.color = "#d9381e";
@@ -859,17 +816,16 @@ const wonOffer = offers[winningIndex];
     function resetUsedPhones() {
       if (confirm("¿Seguro que deseas limpiar la lista de WhatsApps que ya jugaron?")) {
         usedPhones = [];
-        localStorage.setItem("ruleta_phones_v3", JSON.stringify([]));
         if (db) db.collection("config").doc("usedPhones").set({ list: [] });
         alert("Lista de teléfonos limpiada.");
       }
     }
 
-    // Inicializar la interfaz y escuchar la nube
-    document.getElementById("spinBtn").disabled = true;
-renderCredits();
-updateSocialText();
-listenToDatabase();
+    // Inicialización al cargar la página
+    updateAdminPanel();
+    renderCredits();
+    updateSocialText();
+    listenToDatabase();
   </script>
 </body>
 </html>
