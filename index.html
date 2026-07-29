@@ -443,7 +443,8 @@
     const app = firebase.initializeApp(firebaseConfig);
     let db;
     try {
-      db = firebase.firestore(app, "baseruleta");
+      firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
     } catch (e) {
       db = firebase.firestore();
     }
@@ -451,15 +452,11 @@
     const ADMIN_PASSWORD = "admin"; 
     const MY_WHATSAPP_NUMBER = "5541999932957"; 
 
-    // Cargar ofertas locales de respaldo
-    const storedOffers = localStorage.getItem("ruleta_offers_v3");
-    let offers = storedOffers ? JSON.parse(storedOffers) : [
-      { name: "360 Saldo Telf", cupos: 3 },
-      { name: "NADA :(", cupos: 9999 },
-      { name: "2 500 CUP", cupos: 2 },
-      { name: "NADA :(", cupos: 9999 },
-      { name: "USD 10 Cupón", cupos: 5 }
-    ];
+    // Ofertas (siempre llegan desde Firebase)
+let offers = [];
+
+let firebaseReady = false;
+];
 
     const storedPhones = localStorage.getItem("ruleta_phones_v3");
     let usedPhones = storedPhones ? JSON.parse(storedPhones) : [];
@@ -481,9 +478,14 @@
 
       db.collection("config").doc("offers").onSnapshot((doc) => {
         if (doc.exists && doc.data().list && doc.data().list.length > 0) {
-          offers = doc.data().list;
-          localStorage.setItem("ruleta_offers_v3", JSON.stringify(offers));
-          updateAdminPanel();
+          offers = JSON.parse(JSON.stringify(doc.data().list));
+firebaseReady = true;
+if (!isSpinning) {
+    updateAdminPanel();
+    drawWheel();
+}
+document.getElementById("spinBtn").disabled = false;
+console.log("Ofertas sincronizadas:", offers);
         }
       }, (err) => console.log("Error consultando ofertas en nube:", err));
 
@@ -503,14 +505,20 @@
         }
       }, (err) => console.log("Error consultando teléfonos:", err));
     }
-
-    function saveOffersToCloud() {
-      localStorage.setItem("ruleta_offers_v3", JSON.stringify(offers));
-      if (db) {
-        db.collection("config").doc("offers").set({ list: offers })
-          .catch((err) => console.error("Error guardando ofertas en la nube:", err));
-      }
-    }
+    async function saveOffersToCloud() {
+  if (!db) return;
+  try {
+    await db.collection("config")
+      .doc("offers")
+      .set({
+        list: offers
+      });
+    console.log("Ofertas actualizadas");
+  } catch (e) {
+    console.error(e);
+    alert("Error guardando las ofertas.");
+  }
+}
 
     function saveWinnerToCloud(name, phone, prize) {
       const parts = name.split(" ");
@@ -523,14 +531,31 @@
         date: new Date().toLocaleString("es-ES")
       };
       
-      winnersHistory.unshift(record);
-      localStorage.setItem("ruleta_winners_v3", JSON.stringify(winnersHistory));
-      renderCredits();
-      updateSocialText();
+      if (!db) {
 
-      if (db) {
-        db.collection("config").doc("winners").set({ list: winnersHistory }).catch(() => {});
-      }
+    winnersHistory.unshift(record);
+    localStorage.setItem("ruleta_winners_v3", JSON.stringify(winnersHistory));
+    renderCredits();
+    updateSocialText();
+    return;
+}
+
+db.runTransaction(async(transaction)=>{
+    const ref=db.collection("config").doc("winners");
+    const snap=await transaction.get(ref);
+    let list=[];
+    if(snap.exists){
+        list=snap.data().list||[];
+    }
+    list.unshift(record);
+    transaction.set(ref,{
+        list:list
+    });
+    winnersHistory=list;
+}).then(()=>{
+    renderCredits();
+    updateSocialText();
+}).catch(console.error);
     }
 
     function saveUsedPhoneToCloud(phone) {
@@ -586,7 +611,7 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       for (let i = 0; i < numSegments; i++) {
-        const angle = currentAngle + i * arcSize;
+        const angle = (i * arcSize) + currentAngle;
         ctx.beginPath();
         
         ctx.fillStyle = colors[i % colors.length];
@@ -628,9 +653,11 @@
     }
 
     function spinWheel() {
-      const name = document.getElementById("userName").value.trim();
-      const phone = document.getElementById("userPhone").value.trim();
-
+    if (!firebaseReady) {
+        alert("Espere unos segundos. Estamos cargando las promociones.");
+        return;
+    }
+    const name = document.getElementById("userName").value.trim();
       if (!name || !phone) {
         alert("Por favor ingresa tu Nombre y WhatsApp antes de girar.");
         return;
@@ -673,9 +700,20 @@
       const numSegments = offers.length;
       const arcSize = (2 * Math.PI) / numSegments;
       
-      const normalizedAngle = (Math.PI * 1.5 - (currentAngle % (Math.PI * 2))) % (Math.PI * 2);
-      const winningIndex = Math.floor(normalizedAngle / arcSize);
-      const wonOffer = offers[winningIndex];
+      const fullCircle = Math.PI * 2;
+
+// Ángulo final de la ruleta
+const finalAngle = currentAngle % fullCircle;
+
+// La flecha está arriba (270°)
+const pointerAngle = (fullCircle - finalAngle + (Math.PI * 1.5)) % fullCircle;
+
+// Segmento ganador
+let winningIndex = Math.floor(pointerAngle / arcSize);
+if (winningIndex >= offers.length) {
+    winningIndex = offers.length - 1;
+}
+const wonOffer = offers[winningIndex];
 
       const modalTitle = document.getElementById("modalTitle");
       const modalSubtext = document.getElementById("modalSubtext");
@@ -700,9 +738,32 @@
         closeModalBtn.style.display = "inline-block";
       } 
       else {
-        wonOffer.cupos--;
-        saveOffersToCloud();
-        saveWinnerToCloud(name, phone, wonOffer.name);
+        db.runTransaction(async (transaction) => {
+
+    const ref = db.collection("config").doc("offers");
+
+    const snap = await transaction.get(ref);
+
+    if (!snap.exists) {
+        throw "No existe el documento de ofertas.";
+    }
+    const data = snap.data();
+    const newOffers = data.list;
+    const offer = newOffers[winningIndex];
+    if (offer.cupos <= 0) {
+        throw "Premio agotado.";
+    }
+    offer.cupos--;
+    transaction.update(ref, {
+        list: newOffers
+    });
+    offers = newOffers;
+}).then(() => {
+    saveWinnerToCloud(name, phone, wonOffer.name);
+}).catch((err) => {
+    alert(err);
+    return;
+});
 
         modalTitle.innerText = "¡FELICIDADES! 🎉";
         modalTitle.style.color = "#d9381e";
@@ -795,10 +856,10 @@
     }
 
     // Inicializar la interfaz y escuchar la nube
-    updateAdminPanel();
-    renderCredits();
-    updateSocialText();
-    listenToDatabase();
+    document.getElementById("spinBtn").disabled = true;
+renderCredits();
+updateSocialText();
+listenToDatabase();
   </script>
 </body>
 </html>
