@@ -445,6 +445,7 @@
     try {
       firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+console.log("Firebase conectado");
     } catch (e) {
       db = firebase.firestore();
     }
@@ -476,7 +477,15 @@ let firebaseReady = false;
     function listenToDatabase() {
       if (!db) return;
 
-      db.collection("config").doc("offers").onSnapshot((doc) => {
+      db.collection("config").doc("offers").get().then((doc) => {
+    console.log("Documento:", doc.exists);
+    console.log(doc.data());
+    if(doc.exists){
+        offers = doc.data().list;
+        console.log(offers);
+        updateAdminPanel();
+    }
+});
         if (doc.exists && doc.data().list && doc.data().list.length > 0) {
           offers = JSON.parse(JSON.stringify(doc.data().list));
 firebaseReady = true;
@@ -604,6 +613,7 @@ db.runTransaction(async(transaction)=>{
     }
 
     function drawWheel() {
+console.log("Ofertas:", offers);
       const numSegments = offers.length;
       if (numSegments === 0) return;
       
